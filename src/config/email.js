@@ -3,7 +3,6 @@ const handlebars = require('handlebars');
 const fs = require('fs');
 const path = require('path');
 const {email, server} = require('./config');
-const { options } = require('joi');
 const {logger} = require('./logger')
 
 // 1. create a transporter

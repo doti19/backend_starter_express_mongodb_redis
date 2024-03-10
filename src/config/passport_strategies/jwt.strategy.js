@@ -3,7 +3,7 @@ const ExtractJwt = require('passport-jwt').ExtractJwt;
 const logger = require('../logger');
 const redisClient = require('../redis');
 const {User} = require('../../api/models');
-const {jwt_token, redis} = require('../config');
+const {jwt_token} = require('../config');
 
 const opts = {
     jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -20,20 +20,22 @@ const jwtLogin = new JwtStrategy(opts, async(req, jwt_payload, done)=>{
 
     try{
         
-        const redisToken = await redisClient.get(`${jwt_payload.id}`).catch((err)=>{
+        await redisClient.get(`${jwt_payload.id}`).then((redisToken)=>{
+            if(
+                req.headers.authorization && 
+                req.headers.authorization.startsWith("Bearer")
+                ){
+                    bearerToken = req.headers.authorization.split(" ")[1];
+                }
+                
+                
+                if(redisToken == bearerToken){
+                    return done(null, false, {message: 'User already Logged Out'});
+                }
+        }) .catch((err)=>{
             logger.error('Error getting token from redis', err);
         });
-        if(
-            req.headers.authorization && 
-            req.headers.authorization.startsWith("Bearer")
-            ){
-                bearerToken = req.headers.authorization.split(" ")[1];
-            }
-            
-            
-            if(redisToken == bearerToken){
-                return done(null, false, {message: 'User already Logged Out'});
-            }
+        
             
             const user = await User.findById(jwt_payload.id);
             if(user){

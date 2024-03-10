@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 
 const redisClient = require('../../config/redis');
-const {jwt_token} = require('../../config/config');
+const {jwt_token, token: tokenConfig} = require('../../config/config');
 const logger = require("../../config/logger");
 
 const {User, Token, UserToken} = require('../models');
@@ -16,6 +16,7 @@ const { authTransformer } = require("../../transformers");
 const { verifyRefreshToken } = require('../../helpers/jwt.helper');
 
 const {checkError} = require('../../utils/checkError');
+const { hashPassword } = require("../models/user.model");
 const register = async(body)=>{
     try{
         authJoiValidator.registerBodyValidator(body);
@@ -56,7 +57,7 @@ const register = async(body)=>{
 
 const login = async(req)=>{
     try{
-        
+        console.log('inside the login service');
         const token = checkError(await req.user.generateJWT());
         const user = checkError(req.user.toJSON());
         
@@ -66,15 +67,34 @@ const login = async(req)=>{
     }
 }
 
+const changePassword = async(body, id)=>{
+    try{
+        authJoiValidator.changePasswordValidator(body);
+    }catch(err){
+        throw new Error(err);
+    }
+    const user = await User.findOne({_id: id});
+    const {oldPassword, newPassword} = body;
+    const isMatch = await user.comparePassword(oldPassword);
+    console.log(isMatch, 'isMatch');
+    if(!isMatch){
+        throw new Error('Current password is incorrect');
+    }
+    const hashed= await User.hashPassword(newPassword);
+    user.password = hashed;
+    user.passwordChangedAt = Date.now();
+    await user.save();
+    return {message: 'password changed successfully'};
 
+}
 const requestPasswordReset = async(body)=>{
     try{
-        authJoiValidator.requestPasswordResetValidator(req.body);
-    }catch{
+        authJoiValidator.requestPasswordResetValidator(body);
+    }catch(err){
         //TODO for all errors related to validation, please have them in one place
         throw new ApiError(err);
     }
-    const user = await User.findOne({"emailAddress.email": email});
+    const user = await User.findOne({"emailAddress.email": body.email});
     
 
     if(!user) throw new ApiError({status: httpStatus.NOT_FOUND, message:'No user found with this email'});
@@ -93,7 +113,7 @@ const requestPasswordReset = async(body)=>{
         createdAt: Date.now(),
     }).save();
     
-    const link = `${links.resetPassword}?token=${resetToken}&id=${user._id}`;
+    const link = `${links.resetPassword}/${resetToken}?email=${user.emailAddress.email}`;
     checkError(
         sendEmail({
             email: user.emailAddress.email,
@@ -107,21 +127,26 @@ const requestPasswordReset = async(body)=>{
     )
     //TODO: use this for development only
     if(server.env !=='production'){
-        return {link: link, token: resetToken};
+        return {link: link, token: resetToken, email: user.emailAddress.email};
     }else{
         return {message: 'Password reset link sent to your email'};
     }
 }
 
-const resetPassword = async(body)=>{
+const resetPassword = async(body, params, query)=>{
+    const data ={
+        ...body,
+            ...params,
+            ...query,
+    };
     try{
-        authJoiValidator.resetPasswordValidator(req.body);
+        
+        authJoiValidator.resetPasswordValidator(data);
     }catch(err){
         throw new Error(err);
     }
-
-    const {userId, token, password} = body;
-    let passwordResetToken = await Token.findOne({userId: userId});
+    const {token, email, password} = data;
+    let passwordResetToken = await Token.findOne({userEmail: email,createdAt: {$gt: Date.now() - (tokenConfig.expiresIn * 1000)}});
 
     if(!passwordResetToken) {
         throw new Error("Invalid or expired reset token");
@@ -142,13 +167,13 @@ const resetPassword = async(body)=>{
                 throw new Error("Failed to Authenticate",err);
             }
 
-            await User.updateOne({_id: userId}, {
+            await User.updateOne({_id: passwordResetToken.userId}, {
                 password: hash,
                 paswordChangedAt: Date.now(),
             });
         });
     });
-    const user = await User.findOne({_id: userId});
+    const user = await User.findOne({_id: passwordResetToken.userId});
     sendEmail({
         email: user.emailAddress.email,
         subject: 'Password Reset Successfully',
@@ -184,7 +209,7 @@ const logout = async(req)=>{
     const userId = req.user._id;
 
     try{
-        console.log('yoni');
+        
         await redisClient.set(`${userId}`, `${accessToken}`,{
             EX: accessTokenLife
         });
@@ -217,6 +242,7 @@ module.exports = {
     resetPassword,
     login,
     register,
+    changePassword,
     logout,
     refresh,
 };

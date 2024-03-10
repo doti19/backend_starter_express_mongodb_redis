@@ -2,7 +2,6 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 
 const {User} = require('../../api/models');
 const {google} = require('../config');
-const logger = require('../logger');
 /**
  * Sign in with Google.
  */

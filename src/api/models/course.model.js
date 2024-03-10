@@ -1,4 +1,3 @@
-const { string } = require('joi');
 const mongoose = require('mongoose');
 
 
@@ -53,7 +52,7 @@ const questionSchema = new Schema({
 //TODO THIS MAY NEED TO HAVE A REFERENCE, LIKE AFTER WHAT VIDEOS
 const assessmentSchema = new Schema({
     assessmentType:{
-        type: string,
+        type: String,
         enum: ['quiz', 'assignment','homework'],
     },
     title: {

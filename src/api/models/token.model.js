@@ -22,9 +22,10 @@ const tokenSchema = new Schema({
     createdAt: {
         type: Date,
         default: Date.now,
-        expires: token.expiresIn,
+        index:{expires: token.expiresIn},
     },
     });
+    // tokenSchema.index({createdAt: 1}, {expireAfterSeconds: 40});
 
     const Token = mongoose.model("Token", tokenSchema);
 
